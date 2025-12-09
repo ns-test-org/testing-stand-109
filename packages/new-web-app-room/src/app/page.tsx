@@ -319,7 +319,7 @@ export default function PacManGame() {
   return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
       <div className="text-center mb-4">
-        <h1 className="text-4xl font-bold text-yellow-400 mb-2">PAC-MAN</h1>
+        <h1 className="text-4xl font-bold text-yellow-400 mb-2">PAC-MAN v2</h1>
         <div className="text-2xl text-white mb-2">Score: {score}</div>
         {!gameStarted && !gameOver && (
           <div className="text-white text-lg">
@@ -345,4 +345,5 @@ export default function PacManGame() {
     </div>
   );
 }
+
 
