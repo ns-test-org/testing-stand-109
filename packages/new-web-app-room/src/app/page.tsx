@@ -567,37 +567,37 @@ export default function PacManGame() {
   };
 
   return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex flex-col items-center justify-center p-4">
       <div className="text-center mb-4">
-        <h1 className="text-4xl font-bold text-yellow-400 mb-2">PAC-MAN v6</h1>
-        <div className="flex gap-6 justify-center text-xl text-white mb-2">
+        <h1 className="text-4xl font-bold text-purple-600 mb-2">PAC-MAN v6</h1>
+        <div className="flex gap-6 justify-center text-xl text-gray-800 mb-2">
           <div>Score: {score}</div>
           <div>Level: {level}</div>
           <div>Lives: {'❤️'.repeat(lives)}</div>
         </div>
         {combo > 0 && (
-          <div className="text-2xl font-bold text-green-400 animate-pulse">
+          <div className="text-2xl font-bold text-green-600 animate-pulse">
             {combo}x COMBO! +{GHOST_SCARED_POINTS * combo}
           </div>
         )}
         {powerModeRef.current && (
-          <div className="text-lg text-blue-400 font-bold">
+          <div className="text-lg text-blue-600 font-bold">
             ⚡ POWER MODE ⚡
           </div>
         )}
         {!gameStarted && !gameOver && (
-          <div className="text-white text-lg mt-2">
+          <div className="text-gray-700 text-lg mt-2">
             Press any arrow key to start
             <br />
-            <span className="text-sm text-gray-400">Use arrow keys or WASD to move</span>
+            <span className="text-sm text-gray-500">Use arrow keys or WASD to move</span>
             <br />
-            <span className="text-xs text-gray-500 mt-2 block">
+            <span className="text-xs text-gray-400 mt-2 block">
               🔴 Chaser • 💗 Ambusher • 🔵 Random • 🟠 Patrol
             </span>
           </div>
         )}
         {gameOver && (
-          <div className="text-white text-xl mt-2">
+          <div className="text-gray-800 text-xl mt-2">
             Game Over!
             <br />
             <span className="text-sm">Press SPACE to restart</span>
@@ -608,9 +608,9 @@ export default function PacManGame() {
         ref={canvasRef}
         width={GRID_SIZE * CELL_SIZE}
         height={GRID_SIZE * CELL_SIZE}
-        className="border-4 border-blue-600 rounded-lg"
+        className="border-4 border-purple-400 rounded-lg shadow-lg"
       />
-      <div className="text-center mt-4 text-gray-400 text-sm max-w-md">
+      <div className="text-center mt-4 text-gray-600 text-sm max-w-md">
         <p>💊 Collect power pellets to turn ghosts blue and eat them!</p>
         <p>🎯 Chain ghost captures for combo multipliers!</p>
         <p>⚡ Speed increases each level - survive as long as you can!</p>
@@ -618,6 +618,7 @@ export default function PacManGame() {
     </div>
   );
 }
+
 
 
 
