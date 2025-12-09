@@ -1,6 +1,6 @@
 {
   "name": "cdc616ab-0f4c-4009-b13a-8973ac6b3210",
-  "version": "0.1.0",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 8000",
