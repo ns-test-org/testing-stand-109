@@ -5,9 +5,19 @@ import { useEffect, useRef, useState } from 'react';
 const GRID_SIZE = 20;
 const CELL_SIZE = 20;
 const INITIAL_SPEED = 150;
+const SPEED_INCREASE_PER_LEVEL = 15;
+const POWER_PELLET_DURATION = 6000;
+const GHOST_SCARED_POINTS = 200;
 
 type Position = { x: number; y: number };
 type Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
+type GhostPersonality = 'chaser' | 'ambusher' | 'random' | 'patrol';
+
+interface Ghost extends Position {
+  personality: GhostPersonality;
+  color: string;
+  scared: boolean;
+}
 
 const GHOST_COLORS = ['#FF0000', '#FFB8FF', '#00FFFF', '#FFB852'];
 
@@ -16,13 +26,21 @@ export default function PacManGame() {
   const [score, setScore] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [gameStarted, setGameStarted] = useState(false);
+  const [level, setLevel] = useState(1);
+  const [lives, setLives] = useState(3);
+  const [combo, setCombo] = useState(0);
 
   const pacManRef = useRef<Position>({ x: 10, y: 10 });
   const directionRef = useRef<Direction>('RIGHT');
   const nextDirectionRef = useRef<Direction>('RIGHT');
   const dotsRef = useRef<boolean[][]>([]);
-  const ghostsRef = useRef<Position[]>([]);
+  const powerPelletsRef = useRef<Position[]>([]);
+  const ghostsRef = useRef<Ghost[]>([]);
   const mouthOpenRef = useRef(true);
+  const powerModeRef = useRef(false);
+  const powerModeTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const comboTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSpeedRef = useRef(INITIAL_SPEED);
 
   useEffect(() => {
     initializeGame();
@@ -39,12 +57,20 @@ export default function PacManGame() {
     }
     dotsRef.current = dots;
 
-    // Initialize ghosts
+    // Initialize power pellets at corners
+    powerPelletsRef.current = [
+      { x: 1, y: 1 },
+      { x: GRID_SIZE - 2, y: 1 },
+      { x: 1, y: GRID_SIZE - 2 },
+      { x: GRID_SIZE - 2, y: GRID_SIZE - 2 },
+    ];
+
+    // Initialize ghosts with unique personalities
     ghostsRef.current = [
-      { x: 5, y: 5 },
-      { x: 14, y: 5 },
-      { x: 5, y: 14 },
-      { x: 14, y: 14 },
+      { x: 5, y: 5, personality: 'chaser', color: GHOST_COLORS[0], scared: false },
+      { x: 14, y: 5, personality: 'ambusher', color: GHOST_COLORS[1], scared: false },
+      { x: 5, y: 14, personality: 'random', color: GHOST_COLORS[2], scared: false },
+      { x: 14, y: 14, personality: 'patrol', color: GHOST_COLORS[3], scared: false },
     ];
 
     // Reset Pac-Man
@@ -53,6 +79,20 @@ export default function PacManGame() {
     nextDirectionRef.current = 'RIGHT';
     setScore(0);
     setGameOver(false);
+    setLevel(1);
+    setLives(3);
+    setCombo(0);
+    powerModeRef.current = false;
+    currentSpeedRef.current = INITIAL_SPEED;
+    
+    if (powerModeTimerRef.current) {
+      clearTimeout(powerModeTimerRef.current);
+      powerModeTimerRef.current = null;
+    }
+    if (comboTimerRef.current) {
+      clearTimeout(comboTimerRef.current);
+      comboTimerRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -67,7 +107,7 @@ export default function PacManGame() {
     const gameLoop = setInterval(() => {
       updateGame();
       drawGame(ctx);
-    }, INITIAL_SPEED);
+    }, currentSpeedRef.current);
 
     return () => clearInterval(gameLoop);
   }, [gameStarted, gameOver]);
@@ -108,6 +148,57 @@ export default function PacManGame() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [gameStarted, gameOver]);
 
+  const getDistance = (pos1: Position, pos2: Position): number => {
+    return Math.abs(pos1.x - pos2.x) + Math.abs(pos1.y - pos2.y);
+  };
+
+  const moveGhostTowards = (ghost: Ghost, target: Position): Position => {
+    const directions: Direction[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+    let bestDir: Direction = directions[0];
+    let bestDist = Infinity;
+
+    for (const dir of directions) {
+      const testPos = { ...ghost };
+      switch (dir) {
+        case 'UP':
+          testPos.y = (testPos.y - 1 + GRID_SIZE) % GRID_SIZE;
+          break;
+        case 'DOWN':
+          testPos.y = (testPos.y + 1) % GRID_SIZE;
+          break;
+        case 'LEFT':
+          testPos.x = (testPos.x - 1 + GRID_SIZE) % GRID_SIZE;
+          break;
+        case 'RIGHT':
+          testPos.x = (testPos.x + 1) % GRID_SIZE;
+          break;
+      }
+      
+      const dist = getDistance(testPos, target);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestDir = dir;
+      }
+    }
+
+    const newPos = { ...ghost };
+    switch (bestDir) {
+      case 'UP':
+        newPos.y = (newPos.y - 1 + GRID_SIZE) % GRID_SIZE;
+        break;
+      case 'DOWN':
+        newPos.y = (newPos.y + 1) % GRID_SIZE;
+        break;
+      case 'LEFT':
+        newPos.x = (newPos.x - 1 + GRID_SIZE) % GRID_SIZE;
+        break;
+      case 'RIGHT':
+        newPos.x = (newPos.x + 1) % GRID_SIZE;
+        break;
+    }
+    return newPos;
+  };
+
   const updateGame = () => {
     // Update direction
     directionRef.current = nextDirectionRef.current;
@@ -136,35 +227,154 @@ export default function PacManGame() {
       setScore((prev) => prev + 10);
     }
 
-    // Move ghosts
-    ghostsRef.current = ghostsRef.current.map((ghost) => {
-      const directions: Direction[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
-      const randomDir = directions[Math.floor(Math.random() * directions.length)];
+    // Check power pellet collision
+    const pelletIndex = powerPelletsRef.current.findIndex(
+      (p) => p.x === newPos.x && p.y === newPos.y
+    );
+    if (pelletIndex !== -1) {
+      powerPelletsRef.current.splice(pelletIndex, 1);
+      powerModeRef.current = true;
+      setScore((prev) => prev + 50);
       
-      const newGhost = { ...ghost };
-      switch (randomDir) {
-        case 'UP':
-          newGhost.y = (newGhost.y - 1 + GRID_SIZE) % GRID_SIZE;
-          break;
-        case 'DOWN':
-          newGhost.y = (newGhost.y + 1) % GRID_SIZE;
-          break;
-        case 'LEFT':
-          newGhost.x = (newGhost.x - 1 + GRID_SIZE) % GRID_SIZE;
-          break;
-        case 'RIGHT':
-          newGhost.x = (newGhost.x + 1) % GRID_SIZE;
-          break;
+      // Make all ghosts scared
+      ghostsRef.current = ghostsRef.current.map((g) => ({ ...g, scared: true }));
+      
+      // Clear existing timer
+      if (powerModeTimerRef.current) {
+        clearTimeout(powerModeTimerRef.current);
       }
-      return newGhost;
+      
+      // Set new timer
+      powerModeTimerRef.current = setTimeout(() => {
+        powerModeRef.current = false;
+        ghostsRef.current = ghostsRef.current.map((g) => ({ ...g, scared: false }));
+        setCombo(0);
+      }, POWER_PELLET_DURATION);
+    }
+
+    // Move ghosts with AI
+    ghostsRef.current = ghostsRef.current.map((ghost) => {
+      let newGhost: Position;
+      
+      if (ghost.scared) {
+        // Run away from Pac-Man
+        const awayTarget = {
+          x: ghost.x + (ghost.x - newPos.x),
+          y: ghost.y + (ghost.y - newPos.y),
+        };
+        newGhost = moveGhostTowards(ghost, awayTarget);
+      } else {
+        switch (ghost.personality) {
+          case 'chaser':
+            // Directly chase Pac-Man
+            newGhost = moveGhostTowards(ghost, newPos);
+            break;
+          
+          case 'ambusher':
+            // Try to get ahead of Pac-Man
+            const aheadPos = { ...newPos };
+            switch (directionRef.current) {
+              case 'UP':
+                aheadPos.y = (aheadPos.y - 4 + GRID_SIZE) % GRID_SIZE;
+                break;
+              case 'DOWN':
+                aheadPos.y = (aheadPos.y + 4) % GRID_SIZE;
+                break;
+              case 'LEFT':
+                aheadPos.x = (aheadPos.x - 4 + GRID_SIZE) % GRID_SIZE;
+                break;
+              case 'RIGHT':
+                aheadPos.x = (aheadPos.x + 4) % GRID_SIZE;
+                break;
+            }
+            newGhost = moveGhostTowards(ghost, aheadPos);
+            break;
+          
+          case 'random':
+            // Random movement with slight bias towards Pac-Man
+            if (Math.random() < 0.3) {
+              newGhost = moveGhostTowards(ghost, newPos);
+            } else {
+              const directions: Direction[] = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
+              const randomDir = directions[Math.floor(Math.random() * directions.length)];
+              newGhost = { ...ghost };
+              switch (randomDir) {
+                case 'UP':
+                  newGhost.y = (newGhost.y - 1 + GRID_SIZE) % GRID_SIZE;
+                  break;
+                case 'DOWN':
+                  newGhost.y = (newGhost.y + 1) % GRID_SIZE;
+                  break;
+                case 'LEFT':
+                  newGhost.x = (newGhost.x - 1 + GRID_SIZE) % GRID_SIZE;
+                  break;
+                case 'RIGHT':
+                  newGhost.x = (newGhost.x + 1) % GRID_SIZE;
+                  break;
+              }
+            }
+            break;
+          
+          case 'patrol':
+            // Patrol in a pattern
+            const patrolTarget = {
+              x: Math.floor(GRID_SIZE / 2) + Math.floor(Math.sin(Date.now() / 1000) * 5),
+              y: Math.floor(GRID_SIZE / 2) + Math.floor(Math.cos(Date.now() / 1000) * 5),
+            };
+            newGhost = moveGhostTowards(ghost, patrolTarget);
+            break;
+          
+          default:
+            newGhost = { ...ghost };
+        }
+      }
+      
+      return { ...ghost, x: newGhost.x, y: newGhost.y };
     });
 
     // Check ghost collision
-    for (const ghost of ghostsRef.current) {
+    for (let i = 0; i < ghostsRef.current.length; i++) {
+      const ghost = ghostsRef.current[i];
       if (ghost.x === newPos.x && ghost.y === newPos.y) {
-        setGameOver(true);
-        setGameStarted(false);
-        return;
+        if (powerModeRef.current && ghost.scared) {
+          // Eat ghost - combo scoring
+          const currentCombo = combo + 1;
+          setCombo(currentCombo);
+          const points = GHOST_SCARED_POINTS * currentCombo;
+          setScore((prev) => prev + points);
+          
+          // Reset ghost to starting position
+          ghostsRef.current[i] = {
+            ...ghost,
+            x: 10,
+            y: 10,
+            scared: false,
+          };
+          
+          // Reset combo timer
+          if (comboTimerRef.current) {
+            clearTimeout(comboTimerRef.current);
+          }
+          comboTimerRef.current = setTimeout(() => {
+            setCombo(0);
+          }, 3000);
+        } else if (!ghost.scared) {
+          // Lose a life
+          setLives((prev) => {
+            const newLives = prev - 1;
+            if (newLives <= 0) {
+              setGameOver(true);
+              setGameStarted(false);
+            } else {
+              // Reset position
+              pacManRef.current = { x: 10, y: 10 };
+              directionRef.current = 'RIGHT';
+              nextDirectionRef.current = 'RIGHT';
+            }
+            return newLives;
+          });
+          return;
+        }
       }
     }
 
@@ -172,10 +382,36 @@ export default function PacManGame() {
     mouthOpenRef.current = !mouthOpenRef.current;
 
     // Check win condition
-    const allDotsEaten = dotsRef.current.every((row) => row.every((dot) => !dot));
+    const allDotsEaten = dotsRef.current.every((row) => row.every((dot) => !dot)) && 
+                         powerPelletsRef.current.length === 0;
     if (allDotsEaten) {
-      setGameOver(true);
-      setGameStarted(false);
+      // Level up!
+      setLevel((prev) => {
+        const newLevel = prev + 1;
+        currentSpeedRef.current = Math.max(50, INITIAL_SPEED - (newLevel - 1) * SPEED_INCREASE_PER_LEVEL);
+        return newLevel;
+      });
+      
+      // Reset level
+      const dots: boolean[][] = [];
+      for (let y = 0; y < GRID_SIZE; y++) {
+        dots[y] = [];
+        for (let x = 0; x < GRID_SIZE; x++) {
+          dots[y][x] = true;
+        }
+      }
+      dotsRef.current = dots;
+      
+      powerPelletsRef.current = [
+        { x: 1, y: 1 },
+        { x: GRID_SIZE - 2, y: 1 },
+        { x: 1, y: GRID_SIZE - 2 },
+        { x: GRID_SIZE - 2, y: GRID_SIZE - 2 },
+      ];
+      
+      pacManRef.current = { x: 10, y: 10 };
+      directionRef.current = 'RIGHT';
+      nextDirectionRef.current = 'RIGHT';
     }
   };
 
@@ -201,6 +437,20 @@ export default function PacManGame() {
         }
       }
     }
+
+    // Draw power pellets
+    powerPelletsRef.current.forEach((pellet) => {
+      ctx.fillStyle = powerModeRef.current ? '#00FF00' : '#FFFFFF';
+      ctx.beginPath();
+      ctx.arc(
+        pellet.x * CELL_SIZE + CELL_SIZE / 2,
+        pellet.y * CELL_SIZE + CELL_SIZE / 2,
+        5,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+    });
 
     // Draw Pac-Man
     const pacMan = pacManRef.current;
@@ -245,8 +495,8 @@ export default function PacManGame() {
     ctx.fill();
 
     // Draw ghosts
-    ghostsRef.current.forEach((ghost, index) => {
-      ctx.fillStyle = GHOST_COLORS[index];
+    ghostsRef.current.forEach((ghost) => {
+      ctx.fillStyle = ghost.scared ? '#0000FF' : ghost.color;
       
       // Ghost body
       ctx.beginPath();
@@ -320,16 +570,34 @@ export default function PacManGame() {
     <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
       <div className="text-center mb-4">
         <h1 className="text-4xl font-bold text-yellow-400 mb-2">PAC-MAN v2</h1>
-        <div className="text-2xl text-white mb-2">Score: {score}</div>
+        <div className="flex gap-6 justify-center text-xl text-white mb-2">
+          <div>Score: {score}</div>
+          <div>Level: {level}</div>
+          <div>Lives: {'❤️'.repeat(lives)}</div>
+        </div>
+        {combo > 0 && (
+          <div className="text-2xl font-bold text-green-400 animate-pulse">
+            {combo}x COMBO! +{GHOST_SCARED_POINTS * combo}
+          </div>
+        )}
+        {powerModeRef.current && (
+          <div className="text-lg text-blue-400 font-bold">
+            ⚡ POWER MODE ⚡
+          </div>
+        )}
         {!gameStarted && !gameOver && (
-          <div className="text-white text-lg">
+          <div className="text-white text-lg mt-2">
             Press any arrow key to start
             <br />
             <span className="text-sm text-gray-400">Use arrow keys or WASD to move</span>
+            <br />
+            <span className="text-xs text-gray-500 mt-2 block">
+              🔴 Chaser • 💗 Ambusher • 🔵 Random • 🟠 Patrol
+            </span>
           </div>
         )}
         {gameOver && (
-          <div className="text-white text-xl">
+          <div className="text-white text-xl mt-2">
             Game Over!
             <br />
             <span className="text-sm">Press SPACE to restart</span>
@@ -342,8 +610,21 @@ export default function PacManGame() {
         height={GRID_SIZE * CELL_SIZE}
         className="border-4 border-blue-600 rounded-lg"
       />
+      <div className="text-center mt-4 text-gray-400 text-sm max-w-md">
+        <p>💊 Collect power pellets to turn ghosts blue and eat them!</p>
+        <p>🎯 Chain ghost captures for combo multipliers!</p>
+        <p>⚡ Speed increases each level - survive as long as you can!</p>
+      </div>
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
